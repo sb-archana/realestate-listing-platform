@@ -1,0 +1,347 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Real Estate Listing Platform API",
+    "version": "1.0.0",
+    "description": "REST API for property listings, search, leads, and authentication."
+  },
+  "servers": [{ "url": "/api" }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string", "nullable": true }
+        }
+      },
+      "PropertyImage": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "url": { "type": "string" },
+          "isPrimary": { "type": "boolean" },
+          "sortOrder": { "type": "integer" }
+        }
+      },
+      "Property": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "propertyType": { "type": "string", "enum": ["APARTMENT", "VILLA", "INDEPENDENT_HOUSE", "PLOT", "COMMERCIAL", "PG"] },
+          "listingType": { "type": "string", "enum": ["SALE", "RENT"] },
+          "price": { "type": "string" },
+          "areaSqft": { "type": "integer" },
+          "bedrooms": { "type": "integer", "nullable": true },
+          "bathrooms": { "type": "integer", "nullable": true },
+          "city": { "type": "string" },
+          "locality": { "type": "string" },
+          "state": { "type": "string" },
+          "pincode": { "type": "string" },
+          "address": { "type": "string" },
+          "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "SOLD"] },
+          "ownerId": { "type": "string", "format": "uuid" },
+          "images": { "type": "array", "items": { "$ref": "#/components/schemas/PropertyImage" } },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Inquiry": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "propertyId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "phone": { "type": "string", "nullable": true },
+          "message": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string" },
+              "code": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register a new user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "email", "password"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "email": { "type": "string" },
+                  "password": { "type": "string", "minLength": 8 },
+                  "phone": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User created, sets refreshToken httpOnly cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "user": { "$ref": "#/components/schemas/User" }, "accessToken": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "409": { "description": "Email already registered", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Log in with email and password",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": { "email": { "type": "string" }, "password": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful, sets refreshToken httpOnly cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "user": { "$ref": "#/components/schemas/User" }, "accessToken": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "401": { "description": "Invalid credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Rotate refresh token and issue a new access token (reads httpOnly cookie)",
+        "responses": {
+          "200": {
+            "description": "New token pair issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "user": { "$ref": "#/components/schemas/User" }, "accessToken": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing/invalid/expired refresh token" }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Revoke the refresh token and clear the cookie",
+        "responses": { "204": { "description": "Logged out" } }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Get the currently authenticated user",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Current user", "content": { "application/json": { "schema": { "type": "object", "properties": { "user": { "$ref": "#/components/schemas/User" } } } } } },
+          "401": { "description": "Not authenticated" }
+        }
+      }
+    },
+    "/properties": {
+      "get": {
+        "tags": ["Properties"],
+        "summary": "Search, filter, sort, and paginate property listings",
+        "parameters": [
+          { "name": "city", "in": "query", "schema": { "type": "string" } },
+          { "name": "propertyType", "in": "query", "schema": { "type": "string" } },
+          { "name": "listingType", "in": "query", "schema": { "type": "string" } },
+          { "name": "minPrice", "in": "query", "schema": { "type": "number" } },
+          { "name": "maxPrice", "in": "query", "schema": { "type": "number" } },
+          { "name": "bedrooms", "in": "query", "schema": { "type": "integer" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["newest", "oldest", "price_asc", "price_desc"] } },
+          { "name": "cursor", "in": "query", "description": "Opaque keyset pagination cursor from a previous response's nextCursor", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 50 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Property" } },
+                    "nextCursor": { "type": "string", "nullable": true },
+                    "hasMore": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Properties"],
+        "summary": "Create a property listing (multipart/form-data, up to 8 images)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "propertyType": { "type": "string" },
+                  "listingType": { "type": "string" },
+                  "price": { "type": "number" },
+                  "areaSqft": { "type": "integer" },
+                  "bedrooms": { "type": "integer" },
+                  "bathrooms": { "type": "integer" },
+                  "city": { "type": "string" },
+                  "locality": { "type": "string" },
+                  "state": { "type": "string" },
+                  "pincode": { "type": "string" },
+                  "address": { "type": "string" },
+                  "images": { "type": "array", "items": { "type": "string", "format": "binary" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Property" } } } } } },
+          "401": { "description": "Not authenticated" }
+        }
+      }
+    },
+    "/properties/{id}": {
+      "get": {
+        "tags": ["Properties"],
+        "summary": "Get property details",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Property detail", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Property" } } } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "put": {
+        "tags": ["Properties"],
+        "summary": "Update own property listing (multipart/form-data)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Property" } } } } } },
+          "403": { "description": "Not the owner" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Properties"],
+        "summary": "Delete own property listing",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "204": { "description": "Deleted" }, "403": { "description": "Not the owner" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/properties/{id}/similar": {
+      "get": {
+        "tags": ["Properties"],
+        "summary": "Get similar properties (same city + type, price within +-20%)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Similar properties", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Property" } } } } } } } }
+      }
+    },
+    "/properties/{id}/inquiries": {
+      "get": {
+        "tags": ["Inquiries"],
+        "summary": "Get leads for own property",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Leads", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Inquiry" } } } } } } },
+          "403": { "description": "Not the owner" }
+        }
+      }
+    },
+    "/inquiries": {
+      "post": {
+        "tags": ["Inquiries"],
+        "summary": "Submit an inquiry / lead for a property (rate-limited, duplicate-protected)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["propertyId", "name", "email", "message"],
+                "properties": {
+                  "propertyId": { "type": "string", "format": "uuid" },
+                  "name": { "type": "string" },
+                  "email": { "type": "string" },
+                  "phone": { "type": "string" },
+                  "message": { "type": "string" },
+                  "website": { "type": "string", "description": "Honeypot field - leave empty" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Inquiry created", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Inquiry" } } } } } },
+          "409": { "description": "Duplicate inquiry within 24h" },
+          "429": { "description": "Rate limited" }
+        }
+      }
+    },
+    "/users/me/properties": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get the authenticated user's own property listings",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Own listings", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Property" } } } } } } } }
+      }
+    }
+  }
+}

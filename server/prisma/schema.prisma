@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// pg_trgm (fast partial-match search on city/locality) and its GIN indexes
+// are created via raw SQL in the migration, since Prisma's declarative schema
+// can't express trigram GIN operator classes.
+
+enum PropertyType {
+  APARTMENT
+  VILLA
+  INDEPENDENT_HOUSE
+  PLOT
+  COMMERCIAL
+  PG
+}
+
+enum ListingType {
+  SALE
+  RENT
+}
+
+enum PropertyStatus {
+  ACTIVE
+  INACTIVE
+  SOLD
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  phone         String?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+  properties    Property[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime @db.Timestamptz(3)
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Property {
+  id           String         @id @default(uuid())
+  title        String
+  description  String
+  propertyType PropertyType
+  listingType  ListingType
+  price        Decimal        @db.Decimal(14, 2)
+  areaSqft     Int
+  bedrooms     Int?
+  bathrooms    Int?
+  city         String
+  locality     String
+  state        String
+  pincode      String
+  address      String
+  status       PropertyStatus @default(ACTIVE)
+  ownerId      String
+  owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  images       PropertyImage[]
+  inquiries    Inquiry[]
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@index([city])
+  @@index([propertyType])
+  @@index([listingType])
+  @@index([price])
+  @@index([bedrooms])
+  @@index([status])
+  @@index([ownerId])
+  @@index([createdAt])
+  @@index([city, propertyType, price], name: "idx_city_type_price")
+  @@index([status, createdAt, id], name: "idx_status_created_id")
+  @@index([status, price, id], name: "idx_status_price_id")
+  @@map("properties")
+}
+
+model PropertyImage {
+  id         String   @id @default(uuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  url        String
+  isPrimary  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([propertyId])
+  @@map("property_images")
+}
+
+model Inquiry {
+  id         String   @id @default(uuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name       String
+  email      String
+  phone      String?
+  message    String
+  ipAddress  String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([propertyId, email, createdAt], name: "idx_property_email_created")
+  @@map("inquiries")
+}
